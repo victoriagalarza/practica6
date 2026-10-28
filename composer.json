@@ -1,0 +1,8 @@
+{
+    "name": "equipo/practica-05-bioinformatica",
+    "description": "Laboratorio Bioinformático de Cultivo (Lilium candidum) - Three.js + FlightPHP + MySQL",
+    "require": {
+        "php": ">=7.4",
+        "flightphp/core": "^3.0"
+    }
+}

@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Laboratorio Bioinformático - Azucena (*Lilium candidum*)</title>
+    <link rel="stylesheet" href="style.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+    <script type="importmap">
+    {
+        "imports": {
+            "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+            "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+        }
+    }
+    </script>
+</head>
+<body>
+    <div id="canvas-container"></div>
+
+    <!-- HUD Izquierdo: Ficha Anatómica y KPIs -->
+    <aside id="info-panel" class="hud-card">
+        <div class="card-header">
+            <h3>🌱 Ficha: Azucena (*Lilium candidum*)</h3>
+            <div class="badges"><span class="badge" id="badge-status" style="background:#16a34a">Saludable</span><span class="badge" id="lbl-modelo">Logístico</span></div>
+        </div>
+        
+        <div class="leaf-counter-box">
+            <div class="counter-title">🍃 Hojas Desarrolladas:</div>
+            <div class="counter-value"><span id="leaf-count">0</span> / <span id="leaf-total">0</span></div>
+            <div class="progress-bar-bg">
+                <div id="leaf-progress-fill" class="progress-bar-fill"></div>
+            </div>
+        </div>
+
+        <div class="kpi-grid">
+            <div class="metric-box"><span class="metric-label">Día / Tick:</span> <strong id="kpi-tick">0</strong></div>
+            <div class="metric-box"><span class="metric-label">Altura N(t):</span> <strong id="kpi-altura">0.05 u</strong></div>
+            <div class="metric-box"><span class="metric-label">Biomasa viva:</span> <strong id="kpi-biomasa">0.00 g</strong></div>
+            <div class="metric-box"><span class="metric-label">ICR:</span> <strong id="kpi-icr">0.000</strong></div>
+            <div class="metric-box"><span class="metric-label">Estrés Térmico:</span> <strong id="kpi-estres-t">0 %</strong></div>
+            <div class="metric-box"><span class="metric-label">Estrés Hídrico:</span> <strong id="kpi-estres-h">0 %</strong></div>
+            <div class="metric-box"><span class="metric-label">Estrés Global:</span> <strong id="kpi-estres-g">0 %</strong></div>
+            <div class="metric-box"><span class="metric-label">Plantas vivas:</span> <strong id="kpi-vivas">0 / 0</strong></div>
+            <div class="metric-box"><span class="metric-label">Ramas:</span> <strong id="kpi-ramas">0 / 0</strong></div>
+            <div class="metric-box"><span class="metric-label">Madurez (altura/K):</span> <strong id="kpi-madurez">0 %</strong></div>
+            <div class="metric-box kpi-wide"><span class="metric-label">🌾 Predicción de cosecha (95 % de K):</span> <strong id="kpi-cosecha">-</strong></div>
+        </div>
+
+        <div class="recommendation-box" style="margin-top: 10px;">
+            <span class="counter-title">💡 Próxima Acción Recomendada:</span>
+            <p id="kpi-recomendacion" class="desc-text" style="color: #4ade80;">Condiciones óptimas de desarrollo.</p>
+        </div>
+
+        <div class="event-log-box">
+            <span class="counter-title">🥀 Bitácora de mortalidad:</span>
+            <ul id="event-log"><li class="ev-empty">Sin eventos todavía.</li></ul>
+        </div>
+
+        <p id="hint-text" style="margin-top: 8px;">Haz clic sobre una estructura 3D para examinarla.</p>
+        <div id="plant-data" class="hidden">
+            <div class="data-row"><strong>Planta:</strong> <span id="part-planta">-</span></div>
+            <div class="data-row"><strong>Estado:</strong> <span id="part-estado">-</span></div>
+            <div class="data-row"><strong>Salud:</strong> <span id="part-salud">-</span></div>
+            <div class="data-row"><strong>Estructura:</strong> <span id="part-name">-</span></div>
+            <div class="data-row"><strong>Especie:</strong> <span>Azucena (*Lilium candidum*)</span></div>
+            <div class="data-row"><strong>Geometría:</strong> <span id="part-geo">-</span></div>
+            <div class="data-row"><strong>Desarrollo Local:</strong> <span id="part-growth">-</span></div>
+            <div class="data-row"><strong>Estrés asociado:</strong> <span id="part-estres">-</span></div>
+            <div class="data-row"><strong>Contribución biomasa:</strong> <span id="part-biomasa">-</span></div>
+        </div>
+    </aside>
+
+    <!-- HUD Derecho: Configuración del Cultivo -->
+    <aside id="status-panel" class="hud-card">
+        <div class="card-header">
+            <h3>⚙️ Configuración del Cultivo</h3>
+        </div>
+
+        <div class="control-group">
+            <label for="select-modelo" class="metric-label">Modelo Matemático:</label>
+            <select id="select-modelo" class="select-input">
+                <option value="logistico" selected>Logístico (Verhulst)</option>
+                <option value="gompertz">Gompertz</option>
+                <option value="exponencial">Exponencial</option>
+                <option value="lineal">Lineal</option>
+            </select>
+        </div>
+
+        <div class="control-group" style="margin-top: 10px;">
+            <label for="slider-r" class="metric-label">🧬 Tasa de crecimiento r: <span id="val-r">0.08</span></label>
+            <input type="range" id="slider-r" min="0.02" max="0.20" step="0.01" value="0.08">
+        </div>
+        <div class="control-group" style="margin-top: 8px;">
+            <label for="slider-k" class="metric-label">🧬 Capacidad de carga K: <span id="val-k">2.5</span></label>
+            <input type="range" id="slider-k" min="1" max="4" step="0.1" value="2.5">
+        </div>
+
+        <div class="status-row" style="margin-top: 12px;"><span>Temp. Óptima:</span> <strong>20 °C</strong></div>
+        <div class="status-row"><span>Humedad Óptima:</span> <strong>60 %</strong></div>
+        <div class="status-row"><span>Días para Floración:</span> <strong>90 días</strong></div>
+        <div class="status-row"><span>Modo Escenario:</span> <strong id="kpi-modo-ab">Estándar</strong></div>
+
+        <div class="mini-chart-box">
+            <span class="counter-title">📈 Línea de tiempo del cultivo</span>
+            <div class="mini-chart-wrap"><canvas id="miniChart"></canvas></div>
+        </div>
+
+        <div class="detalles-box">
+            <span class="counter-title">🔎 Detalles del cultivo</span>
+            <div class="status-row"><span>Ambiente actual:</span> <strong id="det-ambiente">-</strong></div>
+            <div class="status-row"><span>Vivas / muertas:</span> <strong id="det-vivas">-</strong></div>
+            <div class="status-row"><span>Aclimatadas 💪:</span> <strong id="det-aclim">0</strong></div>
+            <div id="plant-chips" class="plant-chips"></div>
+            <p class="chip-legend">Verde: sana · Amarillo: estresada · Naranja: marchita · Gris: muerta · Borde azul: se recuperó</p>
+        </div>
+    </aside>
+
+    <!-- Toolbar Inferior con Línea de Tiempo -->
+    <a href="observatorio.html" style="position:fixed;top:10px;right:10px;z-index:50;padding:6px 10px;border-radius:6px;background:#22305f;color:#fff;text-decoration:none;font:13px system-ui">🌍 Observatorio global</a>
+    <nav id="controls-toolbar" class="hud-card">
+        <!-- LÍNEA DE TIEMPO ANUAL (0 - 365) -->
+        <div class="timeline-container">
+            <label for="slider-timeline" class="timeline-label">⏱️ Ciclo Anual (Días/Ticks): <span id="lbl-timeline-tick">0</span> / 365</label>
+            <input type="range" id="slider-timeline" min="0" max="365" step="1" value="0" class="timeline-slider">
+        </div>
+
+        <div class="sliders-grid">
+            <div class="slider-group">
+                <label for="slider-pots">🪴 Macetas: <span id="val-pots">12</span></label>
+                <input type="range" id="slider-pots" min="1" max="15" step="1" value="12">
+            </div>
+            <div class="slider-group">
+                <label for="slider-branches">🌿 Ramas: <span id="val-branches">3</span></label>
+                <input type="range" id="slider-branches" min="1" max="5" step="1" value="3">
+            </div>
+            <div class="slider-group">
+                <label for="slider-temp">🌡️ Temp (°C): <span id="lbl-temp">20.0 °C</span></label>
+                <input type="range" id="slider-temp" min="5" max="40" step="0.1" value="20">
+            </div>
+            <div class="slider-group">
+                <label for="slider-humedad">💧 Humedad Suelo (%): <span id="lbl-humedad">60.0 %</span></label>
+                <input type="range" id="slider-humedad" min="10" max="100" step="0.1" value="60">
+            </div>
+            <div class="slider-group">
+                <label for="slider-wind">💨 Viento GLSL: <span id="val-wind">1.5</span></label>
+                <input type="range" id="slider-wind" min="0.0" max="4.0" step="0.1" value="1.5">
+            </div>
+        </div>
+
+        <div class="buttons-row" style="margin-top: 8px;">
+            <button id="btn-toggle-sim" class="btn">⏸️ Pausar</button>
+            <button id="btn-reset-growth" class="btn">🔄 Reiniciar</button>
+            <button id="btn-estaciones" class="btn" style="background-color: #0284c7;">🌤️ Estaciones: OFF</button>
+            <button id="btn-toggle-ab" class="btn btn-exp">⚖️ Comparar A/B</button>
+            <button id="btn-save-sim" class="btn btn-exp">💾 Guardar en DB</button>
+            <button id="btn-historial" class="btn btn-exp">🗂️ Historial</button>
+            <button id="btn-open-charts" class="btn btn-chart">📈 Curvas & Reportes</button>
+            <button id="btn-reset-cam" class="btn">🎥 Cámara</button>
+        </div>
+    </nav>
+
+    <!-- Modal de Gráficas Chart.js -->
+    <div id="chart-modal" class="modal hidden">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>📈 Curvas de Crecimiento y Telemetría de Biomasa</h2>
+                <span class="close-modal" id="close-modal">&times;</span>
+            </div>
+            <div class="modal-body">
+                <div class="chart-wrap"><canvas id="growthChart"></canvas></div>
+                <div class="modal-actions">
+                    <button id="btn-export-csv" class="btn">⬇️ Exportar CSV</button>
+                    <button id="btn-export-pdf" class="btn">🖨️ Exportar PDF</button>
+                </div>
+                <div id="reportes-box" class="reportes-box">Cargando reportes…</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal Historial -->
+    <div id="hist-modal" class="modal hidden">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>🗂️ Historial de simulaciones</h2>
+                <span class="close-modal" id="close-hist">&times;</span>
+            </div>
+            <div class="modal-body">
+                <div class="hist-wrap">
+                    <table id="hist-table">
+                        <thead><tr><th>ID</th><th>Nombre</th><th>Modelo</th><th>Temp / Humedad</th><th>Días</th><th>Biomasa</th><th>Vivas / Muertas</th><th></th></tr></thead>
+                        <tbody id="hist-body"></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="toast" class="toast hidden"></div>
+
+    <script type="module" src="main.js"></script>
+</body>
+</html>

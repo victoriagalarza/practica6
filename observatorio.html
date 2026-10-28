@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Observatorio Global de Cultivos</title>
+<style>
+:root{--bg:#0b1020;--p:#141b33;--t:#e8ecf8;--m:#8d97b8;--ok:#4ade80}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--t);font:14px system-ui,sans-serif;display:flex;height:100vh}
+#globe{flex:1;min-width:0;overflow:hidden;position:relative}aside{width:360px;max-width:44vw;background:var(--p);padding:14px;overflow:auto}
+h1{font-size:16px;margin:0 0 8px}h2{font-size:13px;color:var(--m);margin:14px 0 6px;text-transform:uppercase}
+input[type=text]{width:100%;padding:6px;border-radius:6px;border:1px solid #2b3560;background:#0b1020;color:var(--t)}
+button,a.btn{background:#22305f;color:var(--t);border:0;border-radius:6px;padding:7px 10px;cursor:pointer;text-decoration:none;font-size:13px;display:inline-block;margin:6px 6px 0 0}
+button:hover,a.btn:hover{background:#2f4287}table{width:100%;border-collapse:collapse}td{padding:3px 0;border-bottom:1px solid #1f2850}td:last-child{text-align:right}
+.big{font-size:34px;font-weight:700;color:var(--ok)}.n-critico{color:#f87171}.n-peligro{color:#fb923c}.n-aviso{color:#facc15}
+.m{color:var(--m)}li{margin:4px 0}ol{padding-left:18px}
+</style></head><body>
+<div id="globe"></div>
+<aside>
+<h1>🌍 Observatorio Global de Cultivos</h1>
+<label class="m">Especie (nombre científico, GBIF)</label>
+<input type="text" id="especie" value="Lilium candidum">
+<button id="btn-gbif">Ver ocurrencias</button>
+<label><input type="checkbox" id="ab"> Comparar A/B (clic en 2 lugares)</label>
+<div id="estado" class="m">Haz clic en cualquier punto del globo.</div>
+<div id="panel"></div>
+<h2>Ranking de idoneidad (esta sesión)</h2><ol id="rank"></ol>
+<h2>Guardados en MySQL (top 10)</h2><ol id="rank-db"></ol>
+</aside>
+<script src="https://unpkg.com/globe.gl"></script>
+<script>
+const $=id=>document.getElementById(id);
+const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const lista=[]; let nAB=0;
+const world=Globe()($('globe')).globeImageUrl('https://unpkg.com/three-globe/example/img/earth-blue-marble.jpg').backgroundColor('#0b1020')
+ .pointLat('lat').pointLng('lng').pointColor(()=>'#fb923c').pointRadius(0.12).pointAltitude(0.004)
+ .ringLat('lat').ringLng('lng').ringColor(d=>()=>d.color).ringMaxRadius(3).ringPropagationSpeed(2).ringRepeatPeriod(900)
+ .arcColor(()=>['#4ade80','#60a5fa']).arcStroke(0.5)
+ .onGlobeClick(({lat,lng})=>analizar(lat,lng));
+// globe.gl usa por defecto el tamaño de la ventana: se ajusta al contenedor para no tapar el panel lateral
+const fit=()=>world.width($('globe').clientWidth).height($('globe').clientHeight);
+fit(); addEventListener('resize',fit);
+
+async function api(url,opt){const r=await fetch(url,opt);const j=await r.json().catch(()=>({}));if(!r.ok)throw new Error(j.error||('HTTP '+r.status));return j;}
+
+$('btn-gbif').onclick=async()=>{
+  $('estado').textContent='Cargando ocurrencias de GBIF…';
+  try{const j=await api('api/geo/gbif?especie='+encodeURIComponent($('especie').value));
+    world.pointsData(j.puntos.map(p=>({lat:p[0],lng:p[1]})));
+    $('estado').textContent=`GBIF: ${j.total_gbif.toLocaleString()} registros en total; se muestran ${j.puntos.length}.`;
+  }catch(e){$('estado').textContent='Error: '+e.message;}
+};
+
+async function analizar(lat,lng){
+  $('estado').textContent='Consultando clima, suelo y biodiversidad… (la primera vez tarda)';
+  try{
+    const a=await api(`api/geo/analisis?lat=${lat.toFixed(4)}&lon=${lng.toFixed(4)}`);
+    a.especie=$('especie').value.trim()||a.especie;
+    a.tag=$('ab').checked?(nAB++%2===0?'A':'B'):'•';
+    lista.push(a);
+    const col={A:'#4ade80',B:'#60a5fa','•':'#facc15'}[a.tag];
+    world.ringsData([...world.ringsData(),{lat:a.lat,lng:a.lon,color:col}]);
+    const par=lista.slice(-2);
+    if($('ab').checked&&par.length==2&&par[0].tag=='A'&&par[1].tag=='B')
+      world.arcsData([{startLat:par[0].lat,startLng:par[0].lon,endLat:par[1].lat,endLng:par[1].lon}]);
+    world.pointOfView({lat:a.lat,lng:a.lon,altitude:1.8},800);
+    $('estado').textContent='Listo.'; panel(a); ranking();
+  }catch(e){$('estado').textContent='Error: '+e.message;}
+}
+
+function panel(a){
+  const c=a.clima,s=a.suelo||{},par=lista.slice(-2);
+  let cmp='';
+  if(a.tag=='B'&&par.length==2&&par[0].tag=='A'){const x=par[0].idoneidad,y=par[1].idoneidad;
+    cmp=`<h2>Comparación A/B</h2><b>${x==y?'Empate':(x>y?'Gana A':'Gana B')}</b>: A ${x} vs B ${y}`;}
+  $('panel').innerHTML=`<h2>${esc(a.tag)} · ${esc(a.lugar||'Sin nombre')}</h2><div class="m">${a.lat}, ${a.lon}</div>
+  <div class="big">${a.idoneidad}<span class="m" style="font-size:14px"> / 100 idoneidad</span></div>
+  <table><tr><td>Temp. media</td><td>${c.temp_media} °C</td></tr><tr><td>Precipitación</td><td>${c.precip_anual} mm/año</td></tr>
+  <tr><td>Radiación</td><td>${c.radiacion} MJ/m²/día</td></tr><tr><td>pH suelo</td><td>${s.ph??'s/d'}</td></tr>
+  <tr><td>Arcilla / arena</td><td>${s.arcilla_pct??'s/d'} % / ${s.arena_pct??'s/d'} %</td></tr>
+  <tr><td>Registros GBIF (200 km)</td><td>${a.ocurrencias??'s/d'}</td></tr></table>
+  <div class="m">Clima: ${esc(c.fuente)}</div>
+  <h2>Decisiones</h2><ul>${a.decisiones.map(d=>`<li class="n-${esc(d.nivel)}"><b>${esc(d.alerta)}</b><br>${esc(d.recomendacion)}</li>`).join('')||'<li>Sin alertas para esta ubicación.</li>'}</ul>
+  <a class="btn" href="index.html?temp=${encodeURIComponent(c.temp_media)}">🌱 Simular aquí</a><button id="btn-g">💾 Guardar análisis</button><span id="g-msg" class="m"></span>${cmp}`;
+  $('btn-g').onclick=async()=>{try{
+    await api('api/geo/guardar',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
+      lat:a.lat,lon:a.lon,lugar:a.lugar,especie:a.especie,temp_media:c.temp_media,precip_anual:c.precip_anual,radiacion:c.radiacion,
+      ph:s.ph,arcilla_pct:s.arcilla_pct,arena_pct:s.arena_pct,ocurrencias:a.ocurrencias,idoneidad:a.idoneidad,decisiones:a.decisiones})});
+    $('g-msg').textContent=' Guardado ✔';cargarGuardados();}catch(e){$('g-msg').textContent=' Error: '+e.message;}};
+}
+
+function ranking(){
+  $('rank').innerHTML=[...lista].sort((x,y)=>y.idoneidad-x.idoneidad).slice(0,8)
+    .map(a=>`<li><b>${a.idoneidad}</b> · ${esc(a.tag)} ${esc((a.lugar||a.lat+', '+a.lon).split(',').slice(0,2).join(','))}</li>`).join('');
+}
+async function cargarGuardados(){try{const l=await api('api/geo/guardados');
+  $('rank-db').innerHTML=l.map(a=>`<li><b>${a.idoneidad}</b> · ${esc((a.lugar||a.lat+', '+a.lon).split(',').slice(0,2).join(','))} <span class="m">${esc(a.especie)}</span></li>`).join('')||'<li class="m">Aún no hay análisis guardados.</li>';}catch(e){}}
+cargarGuardados();
+</script></body></html>
